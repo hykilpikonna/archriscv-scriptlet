@@ -1,5 +1,6 @@
 archriscv-*.tar.*
 archriscv-*.qcow2
+archriscv-*.img
 dracut-hook/
 rootfs/
 qcow2/
