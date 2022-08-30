@@ -1,1 +1,1 @@
-sudo pacman -Sy devtools-riscv64 arch-install-scripts riscv64-linux-gnu-gcc
+sudo pacman -Sy devtools-riscv64 arch-install-scripts riscv64-linux-gnu-gcc qemu-full
