@@ -64,7 +64,7 @@ toggle-systemd-firstboot() {
 
 use-fixed-password() {
     msg2 "Using fixed password... $password"
-    [[ -n $password ]] && sudo usermod --root $(realpath ./qcow2) --password $(openssl passwd -6 "$password") root
+    [[ -n $password ]] && sudo usermod --root "$(realpath ./qcow2)" --password "$(openssl passwd -6 "$password")" root
 }
 
 parse-args "$@"
