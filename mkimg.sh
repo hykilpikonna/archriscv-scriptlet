@@ -93,7 +93,7 @@ msg "Install kernel package..."
 
 sudo arch-chroot qcow2 pacman \
     --noconfirm \
-    -Syu linux linux-firmware
+    -Syu linux linux-firmware base base-devel net-tools
 
 sudo mkdir -p qcow2/boot/extlinux
 cat << EOF | sudo tee qcow2/boot/extlinux/extlinux.conf
