@@ -69,8 +69,14 @@ yes y | sudo pacman \
     --sysroot ./rootfs \
     --sync --clean --clean
 
+read -p "Press press key"
+
+msg "Install custom packages..."
+sudo cp ./pacman-extra-riscv64.conf ./rootfs/etc/pacman.d/pacman-custom.conf
+sudo systemd-nspawn -D rootfs pacman --config /etc/pacman.d/pacman-custom.conf --noconfirm -Syu ripgrep duf dust progress bat exa lsd git-delta broot fd jq tealdeer btop gping hyperfine curlie dog thefuck micro nano zsh nushell dhcpcd
+
 msg "Set root password (Default: archriscv)..."
-sudo usermod --root $(realpath ./rootfs) --password $(openssl passwd -6 "$password") root
+sudo usermod --root "$(realpath ./rootfs)" --password "$(openssl passwd -6 "$password")" root
 
 msg "Compressing rootfs..."
 sudo bsdtar --create \
