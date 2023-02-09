@@ -1,10 +1,30 @@
-# Arch Linux RISC-V Scripts
+# Arch RISC-V Scriptlet
 
-## Usage
+Useful scripts for building and running Arch RISC-V Qcow image.
 
-### Build an ArchLinux image
+## Prerequisite
 
-1. Install dependencies `./install-dependencies.sh`
-1. Build rootfs `./mkrootfs.sh`
-1. Build image `./mkimg.sh`
-1. Convert to img `qemu-img convert -f qcow2 -O raw archriscv-*.qcow2 archriscv.img`
+* arch-install-scripts
+* git
+* qemu-img
+* qemu-system-riscv
+* riscv64-linux-gnu-gcc
+
+## Build Step
+
+```bash
+./mkrootfs
+./mkimg
+```
+
+## Start QEMU
+
+```bash
+./startqemu.sh [qcow image file]
+```
+
+### Others
+
+* Install dependencies `./install-dependencies.sh`
+* Convert to img `qemu-img convert -f qcow2 -O raw archriscv-*.qcow2 archriscv.img`
+

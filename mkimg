@@ -1,0 +1,171 @@
+#!/usr/bin/bash
+#
+# SPDX-FileCopyrightText: 2022 Celeste Liu <CoelacanthusHex@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# shellcheck disable=1091
+. /usr/share/makepkg/util.sh
+colorize
+
+verbose=0
+use_fixed_password=0
+varbose_arg=
+rootfs="archriscv-$(date --rfc-3339=date).tar.zst"
+
+show_help() {
+cat << EOF
+Usage: ${0##*/} [-hvf] [-p PASSWORD] [-r ROOTFS] [FILENAME]
+Create Arch RISC-V qemu image.
+
+    FILENAME    generated image file name
+                default: 'archriscv-$(date --rfc-3339=date).qcow2'
+
+    -h          display this help and exit
+    -f          use fixed password instead of using systemd-firstboot to ask
+    -p PASSWORD set root password to PASSWORD instead of passwd in rootfs
+    -r ROOTFS   specify rootfs file name
+    -v          verbose mode
+EOF
+}
+
+parse-args() {
+    local OPTIND=1
+    while getopts 'hvfr:p:' opt; do
+      case $opt in
+        h)
+            show_help
+            exit 0
+            ;;
+        v)  verbose=$((verbose+1))
+            varbose_arg="--verbose"
+            ;;
+        f)
+            use_fixed_password=1
+            ;;
+        p)  password=$OPTARG
+            ;;
+        r)  rootfs=$OPTARG
+            ;;
+        *)
+            show_help >&2
+            exit 1
+            ;;
+      esac
+  done
+  shift "$(( OPTIND-1 ))"
+  filename=${1:-archriscv-$(date --rfc-3339=date).qcow2}
+}
+
+toggle-systemd-firstboot() {
+    msg2 "Toggle systemd-firstboot..."
+    sudo rm -f qcow2/etc/{machine-id,hostname,shadow}
+    sudo systemd-nspawn -D qcow2 systemctl enable systemd-firstboot.service
+}
+
+use-fixed-password() {
+    msg2 "Using fixed password... $password"
+    [[ -n $password ]] && sudo usermod --root $(realpath ./qcow2) --password $(openssl passwd -6 "$password") root
+}
+
+parse-args "$@"
+
+msg "Building u-boot..."
+
+[[ -d u-boot ]] || git clone https://github.com/u-boot/u-boot.git
+pushd u-boot
+git checkout master -- ':(top)'
+git checkout master
+git pull --rebase
+git checkout v2022.10
+msg2 "Apply binutils 2.38 compitible patch"
+git cherry-pick -n 1dde977518f13824b847e23275001191139bc384
+
+make \
+    CROSS_COMPILE=riscv64-linux-gnu- \
+    qemu-riscv64_smode_defconfig
+make CROSS_COMPILE=riscv64-linux-gnu-
+popd
+
+msg "Building OpenSBI..."
+
+[[ -d opensbi ]] || git clone https://github.com/riscv-software-src/opensbi
+pushd opensbi
+git checkout master -- ':(top)'
+git checkout master
+git pull --rebase
+git checkout v1.1
+
+make \
+    CROSS_COMPILE=riscv64-linux-gnu- \
+    PLATFORM=generic \
+    FW_PAYLOAD_PATH=../u-boot/u-boot.bin
+popd
+
+cp ./opensbi/build/platform/generic/firmware/fw_payload.bin opensbi_fw_payload.bin
+
+msg "Create image file..."
+qemu-img create -f qcow2 "$filename" 10G
+sudo modprobe nbd max_part=16 || exit 1
+sudo qemu-nbd -c /dev/nbd0 "$filename"
+
+sudo sfdisk /dev/nbd0 <<EOF
+label: dos
+label-id: 0x17527589
+device: /dev/nbd0
+unit: sectors
+
+/dev/nbd0p1 : start=        2048, type=83, bootable
+EOF
+
+sudo mkfs.ext4 /dev/nbd0p1
+sudo e2label /dev/nbd0p1 rootfs
+
+sudo mkdir -p qcow2
+sudo mount /dev/nbd0p1 qcow2
+sudo chown root:root qcow2
+
+msg "Extract rootfs..."
+
+pushd qcow2
+sudo bsdtar $varbose_arg -pxf "../$rootfs"
+popd
+
+msg "Install kernel package..."
+
+sudo systemd-nspawn -D qcow2 pacman \
+    --noconfirm \
+    -Syu linux linux-firmware
+
+sudo mkdir -p qcow2/boot/extlinux
+cat << EOF | sudo tee qcow2/boot/extlinux/extlinux.conf
+menu title Arch RISC-V QEMU Boot
+timeout 100
+default linux
+
+label linux
+    menu label Linux linux
+    kernel /boot/vmlinuz-linux
+    initrd /boot/initramfs-linux-fallback.img
+    append earlyprintk rw root=/dev/vda1 rootwait rootfstype=ext4 LANG=en_US.UTF-8 console=ttyS0
+EOF
+
+cat << EOF | sudo tee qcow2/etc/systemd/network/default.network
+[Match]
+Name=en*
+
+[Network]
+DHCP=yes
+EOF
+sudo systemd-nspawn -D qcow2 systemctl enable systemd-networkd.service
+
+msg "Clean up..."
+msg2 "Clean up pacman package cache..."
+yes y | sudo pacman \
+    --sysroot ./qcow2 \
+    --sync --clean --clean
+
+(( use_fixed_password==0 )) && toggle-systemd-firstboot || use-fixed-password
+
+msg2 "Unmount..."
+sudo umount qcow2
+sudo qemu-nbd -d /dev/nbd0
