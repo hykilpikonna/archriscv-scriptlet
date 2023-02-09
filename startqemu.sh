@@ -19,3 +19,5 @@ qemu-system-riscv64 \
     -device virtio-rng-device,rng=rng0 \
     -drive file=archriscv-$(date --rfc-3339=date).qcow2,format=qcow2,id=hd0 \
     -monitor unix:/tmp/qemu-monitor,server,nowait
+    -net nic,model=virtio \
+    -net bridge,br=br0
